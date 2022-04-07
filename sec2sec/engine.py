@@ -18,13 +18,13 @@ def train(model, iterator, optimizer, criterion, clip, device = None):
         
         optimizer.zero_grad()
         
-        output, attetion = model(src, trg, 0.4)
+        output = model(src, trg[:-1], 0.4)
         
         #trg = [trg sent len, batch size]
         #output = [trg sent len, batch size, output dim]
         
 
-        output = output[1:].permute(1,2,0)
+        output = output.permute(1,2,0)
         trg = trg[1:].permute(1,0)
         
         #trg = [(trg sent len - 1) * batch size]
@@ -60,7 +60,7 @@ def evaluate(model, iterator, criterion, device=None):
             trg = trg.to(device)
 
 
-            output, attention = model(src, trg, 0) #turn off teacher forcing
+            output = model(src, trg[:-1], 0) #turn off teacher forcing
 
             #trg = [trg sent len, batch size]
             #output = [trg sent len, batch size, output dim]
@@ -68,7 +68,7 @@ def evaluate(model, iterator, criterion, device=None):
             #output = output[1:].view(-1, output.shape[-1])
             #trg = trg[1:].view(-1)
 
-            output = output[1:].permute(1,2,0)
+            output = output.permute(1,2,0)
             trg = trg[1:].permute(1,0)
 
             #trg = [(trg sent len - 1) * batch size]

@@ -1,5 +1,6 @@
 import torch
 from typing import List
+from torchtext.vocab import  FastText
 
 # helper function to club together sequential operations
 def sequential_transforms(*transforms):
@@ -10,8 +11,36 @@ def sequential_transforms(*transforms):
     return func
 
 # function to add BOS/EOS and create tensor for input sequence indices
-def tensor_transform(token_ids: List[int], BOS_IDX, EOS_IDX):
-    return torch.cat((torch.tensor([BOS_IDX]),
-                      torch.tensor(token_ids),
-                      torch.tensor([EOS_IDX])))
+
+class TensorTransform(object):
+    def __init__(self, bos_idx, eos_idx) -> None:
+        self.bos_idx = bos_idx
+        self.eos_idx = eos_idx
+    def __call__(self, token_ids: List[int]):
+        return torch.cat((torch.tensor([self.bos_idx], dtype=torch.long),
+                      torch.tensor(token_ids, dtype=torch.long),
+                      torch.tensor([self.eos_idx], dtype=torch.long)))
+
+class myFastText(FastText):
+    def __getitem__(self, token):
+        if token in self.stoi:
+            return self.vectors[self.stoi[token]]
+        else:
+            vector = torch.Tensor(1, self.dim).zero_()
+            num_vectors = 0
+            chars = list(token)
+            for n in [3,4,5]:
+                end = len(chars) - n + 1
+                grams = [chars[i:(i + n)] for i in range(end)]
+                for gram in grams:
+                    gram_key = ''.join(gram)
+                    if gram_key in self.stoi:
+                        vector += self.vectors[self.stoi[gram_key]]
+                        num_vectors += 1
+            if num_vectors > 0:
+                vector /= num_vectors
+            else:
+                vector = self.unk_init(vector)
+            return vector
+
 
