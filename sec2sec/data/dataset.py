@@ -1,5 +1,5 @@
 
-from typing import Dict
+from typing import Dict, Tuple
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
 
@@ -7,8 +7,9 @@ from torch.utils.data import Dataset
 
 
 class TranslationDataset(Dataset):
-    def __init__(self, data, text_transform: Dict, pad_idx, src_ln: str, trg_ln:str):
+    def __init__(self, data, text_transform: Dict, pad_idx, ln_pair: Tuple):
         super().__init__()
+        src_ln, trg_ln = ln_pair
         self.pad_idx = pad_idx
         self.tensors = []
         for src, trg in data:

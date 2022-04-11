@@ -8,17 +8,24 @@ import random
 
 
 class OnlyGRU(nn.Module):
-    def __init__(self, input_dim, output_dim, emd_size, hidden_size,  pad_idx, device, dropout=0.3) -> None:
+    def __init__(self, input_dim, output_dim, emd_size, hidden_size,  pad_idx, eos_idx, device, dropout=0.3, embedding=None) -> None:
 
         super().__init__()
         self.input_dim = input_dim
         self.output_dim = output_dim
         self.emd_size = emd_size
+        self.eos_idx = eos_idx
+        self.pad_idx = pad_idx
 
         self.device = device
 
-        self.src_embedding = nn.Embedding(
+        if embedding != None:
+            self.embedding = embedding
+        else:
+            self.src_embedding = nn.Embedding(
             input_dim, emd_size, padding_idx=pad_idx)
+
+        
         self.trg_embedding = nn.Embedding(
             output_dim, emd_size, padding_idx=pad_idx)
         self.encoder = nn.GRU(emd_size, hidden_size, 2, bidirectional=True)
@@ -26,6 +33,14 @@ class OnlyGRU(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.fc = nn.Linear(hidden_size*2, hidden_size)
         self.to_trg_vocab_size = nn.Linear(hidden_size * 2, output_dim)
+
+    def create_pad_mask(self, src, trg):
+        src_mask = (src != self.pad_idx).permute(1,0).unsqueeze(1)
+        trg_mask = (trg != self.pad_idx).permute(1,0).unsqueeze(2)
+        mask = trg_mask * src_mask
+
+        return mask
+
 
     def forward(self, src, trg, *args):
         """
@@ -40,7 +55,9 @@ class OnlyGRU(nn.Module):
         # src len x batch_size x hidden_size
         encoder_outputs = self.encode(src)
 
-        decoder_outputs, att = self.decode(encoder_outputs, trg)
+        mask = self.create_pad_mask(src, trg)
+
+        decoder_outputs, att = self.decode(encoder_outputs, trg, mask)
 
         return decoder_outputs
 
@@ -51,14 +68,14 @@ class OnlyGRU(nn.Module):
         encoder_outputs = self.fc(encoder_outputs)
         return encoder_outputs
 
-    def decode(self, encoder_outputs, trg):
+    def decode(self, encoder_outputs, trg, mask):
         trg_embeded = self.dropout(self.trg_embedding(trg))
         # trg len x batch_size x hidden_size
         decoder_outputs, _ = self.decoder(trg_embeded)
 
         scores = torch.bmm(decoder_outputs.permute(1, 0, 2), encoder_outputs.permute(
-            1, 2, 0),)  # batch_size  x trg len x src len
-
+            1, 2, 0),) # batch_size  x trg len x src len
+        scores.masked_fill(mask == 0, float('-inf'))
         weighted = torch.bmm(scores, encoder_outputs.permute(1, 0, 2)).permute(
             1, 0, 2)  # batch_size  x trg len x hidden_size
 
@@ -74,19 +91,22 @@ class OnlyGRU(nn.Module):
 
         src = src.unsqueeze(1).repeat(1, beam_size).to(device)
 
-        # outputs [sent len, 1, enc hid dim * 2] #hidden = [1, dec hid dim]
         encoder_outputs = self.encode(src)
 
         last_scores = torch.zeros((beam_size, 1)).to(device)
 
         # tensor to store decoder outputs
-        outputs = torch.zeros(beam_size, max_len).to(device)
-        outputs[:,0] = src[0, :]
+        outputs = torch.zeros((beam_size, max_len),
+                              dtype=torch.long).to(device)
+        outputs[:, 0] = src[0, :]
         # tensor to store attention
         #attentions = torch.zeros(max_len, beam_size, src.shape[0]).to(device)
 
         for i in range(1, max_len):
-            dec_logits,  att = self.decode(encoder_outputs, outputs[:,:i].permute(1,0))
+            trg = outputs[:, :i].permute(1, 0)
+            mask = self.create_pad_mask(src, trg)
+            dec_logits,  att = self.decode(
+                encoder_outputs, trg, mask)
             dec_logits = dec_logits[-1]
 
             scores = F.log_softmax(dec_logits, 1)
@@ -96,14 +116,14 @@ class OnlyGRU(nn.Module):
 
             scores += last_scores
             order_scores = scores.flatten().argsort(descending=True)
-            if i == 0:
+            if i == 1:
                 output = ind.flatten()[:beam_size]
             else:
                 output = ind.flatten()[order_scores][:beam_size]
 
             beam_ids = torch.div(
                 order_scores[:beam_size], beam_size, rounding_mode='floor')
-            hidden = hidden[beam_ids]
+
             outputs = outputs[beam_ids]
             att = att[beam_ids]
 
@@ -115,10 +135,10 @@ class OnlyGRU(nn.Module):
             last_scores = (last_scores[beam_ids] +
                            new_scores)/(lens_hyp + 1) ** 0.5
 
-            outputs[:, i+1] = output
+            outputs[:, i] = output
             #attentions[i] = att
 
             if torch.all(output == self.eos_idx):
-                return outputs[:, :i+1], last_scores, att
+                return outputs[:, 1:i], last_scores, att
 
-        return outputs, last_scores, att
+        return outputs[:, 1:], last_scores, att

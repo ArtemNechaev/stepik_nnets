@@ -43,4 +43,7 @@ class myFastText(FastText):
                 vector = self.unk_init(vector)
             return vector
 
+    def __call__(self, corpus: List[List[str]] ):
+        res = torch
+
 

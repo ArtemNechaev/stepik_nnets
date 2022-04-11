@@ -1,5 +1,13 @@
+from msilib import sequence
+from typing import Sequence
 import torch
 
+def data_to_device (data, device):
+    if isinstance(data, Sequence):
+        data = (d.to(device) for d in data)
+    else:
+        data = data.to(device)
+    return data
 
 def train(model, iterator, optimizer, criterion, clip, device = None):
     
@@ -9,6 +17,8 @@ def train(model, iterator, optimizer, criterion, clip, device = None):
 
     if device == None:
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+    model = model.to(device)
     
     for i, batch in enumerate(iterator):
         
@@ -50,6 +60,8 @@ def evaluate(model, iterator, criterion, device=None):
 
     if device == None:
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+    model = model.to(device)
     
     with torch.no_grad():
     
@@ -79,3 +91,12 @@ def evaluate(model, iterator, criterion, device=None):
             epoch_loss += loss.item()
         
     return epoch_loss / len(iterator)
+
+def predict_with_model(model, iterator, device = None):
+    if device == None:
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+    for batch in iterator:
+
+        src, trg = data_to_device(batch, device)
+        
