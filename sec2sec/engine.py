@@ -1,5 +1,6 @@
 from msilib import sequence
 from typing import Sequence
+from torchtext.vocab import Vocab
 import torch
 
 def data_to_device (data, device):
@@ -92,11 +93,16 @@ def evaluate(model, iterator, criterion, device=None):
         
     return epoch_loss / len(iterator)
 
-def predict_with_model(model, iterator, device = None):
+def predict_with_model(model, iterator, vocab: Vocab,  device = None):
     if device == None:
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
+    result = []
     for batch in iterator:
 
         src, trg = data_to_device(batch, device)
+        for i in range(src.shape[1]):
+            outputs, s_ , a_ = model.predict(src[:,i], beam_size=5, max_len=20, device=device)
+            text = vocab.lookup_tokens(list(outputs[0].cpu().numpy()))
+            result.append(text)
+    return result
         
