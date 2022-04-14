@@ -69,20 +69,21 @@ class OnlyGRU(nn.Module):
         if self.forward_mode == 'greedy':
             max_len = trg.shape[0]
             input_trg = trg[0].unsqueeze(0)
-         
+            h_0 = None
+
+            outputs = torch.zeros(max_len, trg.shape[1],
+                              self.output_dim).to(self.device)
 
             for t in range(1, max_len):
                 mask = self.create_pad_mask(src, input_trg)
-                outputs, attention = self.decode(encoder_outputs, input_trg, mask)
+                decoder_outputs, attention, h_0 = self.decode(encoder_outputs, input_trg, mask, h_0)
 
                 teacher_force = random.random() < teacher_forcing_ratio
-                top1 = outputs[-1].argmax(-1)
+                top1 = decoder_outputs[-1].argmax(-1)
                 output = (trg[t] if teacher_force else top1)
-                input_trg = torch.cat([input_trg, output.unsqueeze(0)])
+                outputs[t-1] = decoder_outputs[-1]
                 #if inference and output.item() == self.eos_idx:
                     #return outputs[:t]
-            mask = self.create_pad_mask(src, input_trg)
-            outputs, attention, h_0 = self.decode(encoder_outputs, input_trg, mask)
 
             return outputs
 

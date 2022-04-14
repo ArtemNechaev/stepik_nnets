@@ -1,4 +1,3 @@
-from msilib import sequence
 from typing import Sequence
 from torchtext.vocab import Vocab
 import torch
