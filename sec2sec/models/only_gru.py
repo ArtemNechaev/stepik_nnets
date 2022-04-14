@@ -71,8 +71,8 @@ class OnlyGRU(nn.Module):
             input_trg = trg[0].unsqueeze(0)
             h_0 = None
 
-            outputs = torch.zeros(max_len, trg.shape[1],
-                              self.output_dim).to(self.device)
+            outputs = torch.zeros((max_len, trg.shape[1],
+                              self.output_dim)).to(self.device)
 
             for t in range(1, max_len):
                 mask = self.create_pad_mask(src, input_trg)
