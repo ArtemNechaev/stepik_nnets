@@ -80,18 +80,19 @@ class OnlyGRU(nn.Module):
 
                 teacher_force = random.random() < teacher_forcing_ratio
                 top1 = decoder_outputs[-1].argmax(-1)
-                output = (trg[t] if teacher_force else top1)
+                input_trg = (trg[t] if teacher_force else top1).unsqueeze(0)
                 outputs[t-1] = decoder_outputs[-1]
                 #if inference and output.item() == self.eos_idx:
                     #return outputs[:t]
 
             return outputs
 
-        mask = self.create_pad_mask(src, trg)
+        elif self.forward_mode == 'next_word':
+            mask = self.create_pad_mask(src, trg)
 
-        decoder_outputs, att, h_0 = self.decode(encoder_outputs, trg, mask)
+            decoder_outputs, att, h_0 = self.decode(encoder_outputs, trg, mask)
 
-        return decoder_outputs
+            return decoder_outputs
 
     def encode(self, src):
         src_embeded = self.dropout(self.src_embedding(src))
