@@ -8,7 +8,7 @@ import random
 
 
 class OnlyGRU(nn.Module):
-    def __init__(self, input_dim, output_dim, emd_size, hidden_size,  pad_idx, eos_idx, device, dropout=0.3, embedding=None) -> None:
+    def __init__(self, input_dim, output_dim, emd_size, hidden_size, num_layers,  pad_idx, eos_idx, device, dropout=0.3, embedding=None) -> None:
 
         super().__init__()
         self.input_dim = input_dim
@@ -20,7 +20,7 @@ class OnlyGRU(nn.Module):
         self.device = device
 
         if embedding != None:
-            self.embedding = embedding
+            self.src_embedding = embedding
         else:
             self.src_embedding = nn.Embedding(
             input_dim, emd_size, padding_idx=pad_idx)
@@ -28,10 +28,11 @@ class OnlyGRU(nn.Module):
         
         self.trg_embedding = nn.Embedding(
             output_dim, emd_size, padding_idx=pad_idx)
-        self.encoder = nn.GRU(emd_size, hidden_size, 2, bidirectional=True)
-        self.decoder = nn.GRU(emd_size, hidden_size, 2)
+        self.encoder = nn.GRU(emd_size, hidden_size, num_layers, bidirectional=True)
+        self.decoder = nn.GRU(emd_size, hidden_size, num_layers)
         self.dropout = nn.Dropout(dropout)
         self.fc = nn.Linear(hidden_size*2, hidden_size)
+        self.enc2dec = nn.Linear(2*self.encoder.num_layers, self.decoder.num_layers)
         self.to_trg_vocab_size = nn.Linear(hidden_size * 2, output_dim)
 
         self.forward_mode = 'next_word'
@@ -64,12 +65,12 @@ class OnlyGRU(nn.Module):
 
         """
         # src len x batch_size x hidden_size
-        encoder_outputs = self.encode(src)
+        encoder_outputs, h_enc = self.encode(src)
 
         if self.forward_mode == 'greedy':
             max_len = trg.shape[0]
             input_trg = trg[0].unsqueeze(0)
-            h_0 = None
+            h_0 = h_enc
 
             outputs = torch.zeros((max_len, trg.shape[1],
                               self.output_dim)).to(self.device)
@@ -90,16 +91,16 @@ class OnlyGRU(nn.Module):
         elif self.forward_mode == 'next_word':
             mask = self.create_pad_mask(src, trg)
 
-            decoder_outputs, att, h_0 = self.decode(encoder_outputs, trg, mask)
+            decoder_outputs, att, h_0 = self.decode(encoder_outputs, trg, mask, h_0=h_enc)
 
             return decoder_outputs
 
     def encode(self, src):
         src_embeded = self.dropout(self.src_embedding(src))
-        encoder_outputs, _ = self.encoder(src_embeded)
+        encoder_outputs, h = self.encoder(src_embeded)
         # src len x batch_size x hidden_size
         encoder_outputs = self.fc(encoder_outputs)
-        return encoder_outputs
+        return encoder_outputs, self.enc2dec(h.permute(1,2,0)).permute(2,0,1).contiguous()
 
     def decode(self, encoder_outputs, trg, mask, h_0 = None):
         trg_embeded = self.dropout(self.trg_embedding(trg))

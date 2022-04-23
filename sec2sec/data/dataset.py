@@ -6,7 +6,7 @@ from torch.utils.data import Dataset
 # function to collate data samples into batch tesors
 
 
-class TranslationDataset(Dataset):
+class Sec2SecDataset(Dataset):
     def __init__(self, data, text_transform: Dict, pad_idx, ln_pair: Tuple):
         super().__init__()
         src_ln, trg_ln = ln_pair
