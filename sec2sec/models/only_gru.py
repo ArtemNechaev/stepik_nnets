@@ -8,7 +8,7 @@ import random
 
 
 class OnlyGRU(nn.Module):
-    def __init__(self, input_dim, output_dim, emd_size, hidden_size, num_layers,  pad_idx, eos_idx, device, dropout=0.3, embedding=None) -> None:
+    def __init__(self, input_dim, output_dim, emd_size, hidden_size, num_layers,  pad_idx, eos_idx, device, dropout=0.3, src_embed=None, trg_embed=None) -> None:
 
         super().__init__()
         self.input_dim = input_dim
@@ -19,15 +19,18 @@ class OnlyGRU(nn.Module):
 
         self.device = device
 
-        if embedding != None:
-            self.src_embedding = embedding
+        if src_embed != None:
+            self.src_embedding = src_embed
         else:
             self.src_embedding = nn.Embedding(
             input_dim, emd_size, padding_idx=pad_idx)
 
+        if trg_embed != None:
+            self.trg_embedding = trg_embed
+        else:
+            self.trg_embedding = nn.Embedding(
+                output_dim, emd_size, padding_idx=pad_idx)
         
-        self.trg_embedding = nn.Embedding(
-            output_dim, emd_size, padding_idx=pad_idx)
         self.encoder = nn.GRU(emd_size, hidden_size, num_layers, bidirectional=True)
         self.decoder = nn.GRU(emd_size, hidden_size, num_layers)
         self.dropout = nn.Dropout(dropout)
