@@ -1,6 +1,40 @@
 from typing import Sequence
 import torch
 
+def beam_search(dec_out, indeces, scores, beam_size, pad_idx, eos_idx):
+    batch_size = int(dec_out.shape[1]/beam_size)
+    
+    # 1 x batch_size*beam_size x vocab_size
+    new_score = dec_out.log_softmax(-1) 
+
+    # 1 x batch_size*beam_size x beam_size
+    new_score, new_idx = new_score.topk(beam_size)
+
+    new_score[:, torch.where(indeces[i-1].flatten() == eos_idx)[0]] = 0
+    scores = scores.reshape(1, batch_size*beam_size, 1) + new_score
+
+    lens_hyp = ((indeces != eos_idx) & (indeces != pad_idx)).sum(0, keepdim=True).reshape(1, batch_size*beam_size, 1)
+    scores = scores/(lens_hyp+1)**0.5
+
+    ######scores, new_idx = scores.topk(beam_size) #1 x  batch_size*beam_size x beam_size
+    flatten_scores = scores.reshape(1,batch_size, beam_size ** 2)
+
+    # 1 x batch_size x beam_size. order_scores [0 .. beam_size**2 - 1]
+    scores, order_scores = flatten_scores.topk(beam_size) 
+
+    
+    # calc beam indexes that got top beam_size scores. beam_ids [0 .. beam_size - 1]
+    beam_ids = torch.div(order_scores, beam_size, rounding_mode='floor') 
+
+    #select beams with top scores from indeces and concat new idx.
+    #start of sentences could repeat.
+
+    indeces = torch.cat([
+                         torch.gather(indeces, -1, beam_ids.repeat(indeces.shape[0], 1, 1)),
+                         torch.gather(new_idx.view(1, batch_size, -1),-1,order_scores)
+    ])
+    
+    return indeces, scores, beam_ids
 
 def beam_search_rnn( model, src, beam_size=5, max_len=20, device=None):
   """
@@ -42,36 +76,8 @@ def beam_search_rnn( model, src, beam_size=5, max_len=20, device=None):
     input_trg = indeces[-1].view(1, batch_size * beam_size )
     mask = model.create_pad_mask(src, input_trg)
     dec_out , att, h_0 = model.decode(encoder_outputs, input_trg, mask, h_0=h_0)
-
-    # 1 x batch_size*beam_size x vocab_size
-    new_score = dec_out.log_softmax(-1) 
-
-    # 1 x batch_size*beam_size x beam_size
-    new_score, new_idx = new_score.topk(beam_size)
-
-    new_score[:, torch.where(indeces[i-1].flatten() == model.eos_idx)[0]] = 0
-    scores = scores.reshape(1, batch_size*beam_size, 1) + new_score
-
-    lens_hyp = ((indeces != model.eos_idx) & (indeces != model.pad_idx)).sum(0, keepdim=True).reshape(1, batch_size*beam_size, 1)
-    scores = scores/(lens_hyp+1)**0.5
-
-    ######scores, new_idx = scores.topk(beam_size) #1 x  batch_size*beam_size x beam_size
-    flatten_scores = scores.reshape(1,batch_size, beam_size ** 2)
-
-    # 1 x batch_size x beam_size. order_scores [0 .. beam_size**2 - 1]
-    scores, order_scores = flatten_scores.topk(beam_size) 
-
     
-    # calc beam indexes that got top beam_size scores. beam_ids [0 .. beam_size - 1]
-    beam_ids = torch.div(order_scores, beam_size, rounding_mode='floor') 
-
-    #select beams with top scores from indeces and concat new idx.
-    #start of sentences could repeat.
-
-    indeces = torch.cat([
-                         torch.gather(indeces, -1, beam_ids.repeat(indeces.shape[0], 1, 1)),
-                         torch.gather(new_idx.view(1, batch_size, -1),-1,order_scores)
-    ])
+    indeces, scores, beam_ids = beam_search(dec_out, indeces, scores, beam_size, pad_idx, eos_idx)
 
     #select beams with top scores from decoder hidden_state
     h_0 = h_0.reshape(h_0.shape[0], batch_size, beam_size, -1)
