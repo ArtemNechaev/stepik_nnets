@@ -86,3 +86,45 @@ def beam_search_rnn( model, src, beam_size=5, max_len=20, device=None):
 
 
   return indeces, scores
+
+
+def beam_search_transformer( model, src, beam_size=5, max_len=20, device=None):
+  """
+  src - src_len x batch_size
+
+  return tensor max_len x batch_size x beam_size
+  """
+  model.eval()
+  if device == None:
+      device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+  src = src.to(model.device)
+  input_trg = src[0].unsqueeze(0) 
+  batch_size = src.shape[1]
+  
+  src_mask, tgt_mask, src_padding_mask, tgt_padding_mask = model.create_mask(src, input_trg)
+    
+  # src_len x batch_size x hidden_size
+  encoder_outputs = model.encode(src, src_mask) 
+
+  # 1 x batch_size x vocab_size
+  first_decode = model.decode(input_trg, encoder_outputs,  tgt_mask) 
+  first_decode = first_decode.log_softmax(-1)
+
+  # 1 x batch_size x beam_size
+  scores, indeces = first_decode.topk(beam_size) 
+
+  # src_len x batch_size*beam_size x hidden_size
+  encoder_outputs = encoder_outputs.unsqueeze(2).repeat(1,1,beam_size,1).reshape(src.shape[0], batch_size*beam_size, -1)
+
+  # src_len x batch_size*beam_size
+  src = src.unsqueeze(2).repeat(1,1,beam_size).reshape(src.shape[0], batch_size*beam_size)
+
+  for i in range(1, max_len):
+    input_trg = indeces[-1].view(1, batch_size * beam_size )
+
+    dec_out , att, h_0 = model.decode( input_trg, encoder_outputs, tgt_mask)
+    
+    indeces, scores, beam_ids = beam_search(dec_out, indeces, scores, beam_size, pad_idx, eos_idx)
+
+  return indeces, scores
