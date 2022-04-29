@@ -46,9 +46,11 @@ class Seq2SeqTransformer(nn.Module):
                  tgt_vocab_size: int,
                  pad_idx: int,
                  eos_idx: int,
+                 device,
                  dim_feedforward: int = 512,
                  dropout: float = 0.1):
         super(Seq2SeqTransformer, self).__init__()
+        self.device = device
         self.pad_idx = pad_idx
         self.eos_idx = eos_idx
         self.transformer = Transformer(d_model=emb_size,
