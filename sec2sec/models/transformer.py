@@ -80,9 +80,10 @@ class Seq2SeqTransformer(nn.Module):
                             self.src_tok_emb(src)), src_mask)
 
     def decode(self, tgt: Tensor, memory: Tensor, tgt_mask: Tensor):
-        return self.transformer.decoder(self.positional_encoding(
+        outs =  self.transformer.decoder(self.positional_encoding(
                           self.tgt_tok_emb(tgt)), memory,
                           tgt_mask)
+        return self.generator(outs)
 
     def generate_square_subsequent_mask(self, sz):
         mask = (torch.triu(torch.ones((sz, sz), device=DEVICE)) == 1).transpose(0, 1)
