@@ -40,12 +40,12 @@ class OnlyGRU(nn.Module):
 
         self.forward_mode = 'next_word'
 
-    def create_pad_mask(self, src, trg):
+    def create_mask(self, src, trg):
         src_mask = (src != self.pad_idx).permute(1,0).unsqueeze(1)
         trg_mask = (trg != self.pad_idx).permute(1,0).unsqueeze(2)
         mask = trg_mask * src_mask
 
-        return mask
+        return {'mask': mask}
 
     @property
     def forward_mode(self):
@@ -79,33 +79,31 @@ class OnlyGRU(nn.Module):
                               self.output_dim)).to(self.device)
 
             for t in range(1, max_len):
-                mask = self.create_pad_mask(src, input_trg)
-                decoder_outputs, attention, h_0 = self.decode(encoder_outputs, input_trg, mask, h_0)
+                mask = self.create_mask(src, input_trg)
+                decoder_outputs, h_0 = self.decode( input_trg, encoder_outputs,  h_0 = h_0, **mask)
 
                 teacher_force = random.random() < teacher_forcing_ratio
                 top1 = decoder_outputs[-1].argmax(-1)
                 input_trg = (trg[t] if teacher_force else top1).unsqueeze(0)
                 outputs[t-1] = decoder_outputs[-1]
-                #if inference and output.item() == self.eos_idx:
-                    #return outputs[:t]
 
             return outputs
 
         elif self.forward_mode == 'next_word':
-            mask = self.create_pad_mask(src, trg)
+            mask = self.create_mask(src, trg)
 
-            decoder_outputs, att, h_0 = self.decode(encoder_outputs, trg, mask, h_0=h_enc)
+            decoder_outputs, h_0 = self.decode( trg, encoder_outputs,  h_0=h_enc, **mask)
 
             return decoder_outputs
 
-    def encode(self, src):
+    def encode(self, src, **kwargs):
         src_embeded = self.dropout(self.src_embedding(src))
         encoder_outputs, h = self.encoder(src_embeded)
         # src len x batch_size x hidden_size
         encoder_outputs = self.fc(encoder_outputs)
         return encoder_outputs, self.enc2dec(h.permute(1,2,0)).permute(2,0,1).contiguous()
 
-    def decode(self, encoder_outputs, trg, mask, h_0 = None):
+    def decode(self,trg, encoder_outputs,  mask = None, h_0 = None, **kwargs):
         trg_embeded = self.dropout(self.trg_embedding(trg))
         # trg len x batch_size x hidden_size
         if h_0 != None:
@@ -122,60 +120,5 @@ class OnlyGRU(nn.Module):
         decoder_outputs = torch.cat([decoder_outputs, weighted], dim=-1)
         decoder_outputs = self.to_trg_vocab_size(decoder_outputs)
 
-        return decoder_outputs, scores, h_0
+        return decoder_outputs, h_0
 
-    def predict(self, src, beam_size=5, max_len=20, device=None):
-
-        if device == None:
-            device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-        src = src.unsqueeze(1).repeat(1, beam_size).to(device)
-
-        encoder_outputs = self.encode(src)
-
-        last_scores = torch.zeros((beam_size, 1)).to(device)
-
-        outputs = torch.zeros((beam_size, max_len),
-                              dtype=torch.long).to(device)
-        outputs[:, 0] = src[0, :]
- 
-
-        for i in range(1, max_len):
-            trg = outputs[:, :i].permute(1, 0)
-            mask = self.create_pad_mask(src, trg)
-
-            dec_logits,  att, h_0 = self.decode(encoder_outputs, trg, mask)
-            dec_logits = dec_logits[-1]
-
-            scores = F.log_softmax(dec_logits, 1)
-            #ind = scores.argsort(1, descending=True)
-            #scores = torch.gather(scores, 1, ind)[:, :beam_size]
-            #ind = ind[:, :beam_size]
-            scores, ind = scores.topk(beam_size, dim =1)
-
-            scores += last_scores
-            order_scores = scores.flatten().argsort(descending=True)[:beam_size]
-            if i == 1:
-                output = ind.flatten()[:beam_size]
-            else:
-                output = ind.flatten()[order_scores]
-
-            beam_ids = torch.div(
-                order_scores, beam_size, rounding_mode='floor')
-
-            outputs = outputs[beam_ids]
-            att = att[beam_ids]
-
-            new_scores = scores.flatten()[order_scores].unsqueeze(1)
-            new_scores[torch.where(outputs[:, i-1] == self.eos_idx)] = 0
-
-            lens_hyp = ((outputs != self.eos_idx) & (outputs != self.pad_idx)).sum(1, keepdim=True)
-            last_scores = (last_scores[beam_ids] + new_scores)/(lens_hyp + 1) ** 0.5
-
-            outputs[:, i] = output
-            #attentions[i] = att
-
-            if torch.all(output == self.eos_idx):
-                return outputs[:, 1:i], last_scores, att
-
-        return outputs[:, 1:], last_scores, att
