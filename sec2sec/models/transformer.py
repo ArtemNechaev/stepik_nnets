@@ -73,7 +73,7 @@ class Seq2SeqTransformer(nn.Module):
     def forward(self,
                 src: Tensor,
                 trg: Tensor,
-                *args):
+                *args, **kwargs):
                 
         src_emb = self.positional_encoding(self.src_tok_emb(src))
         tgt_emb = self.positional_encoding(self.tgt_tok_emb(trg))

@@ -57,7 +57,7 @@ class OnlyGRU(nn.Module):
         self._forward_mode = value
 
 
-    def forward(self, src, trg, teacher_forcing_ratio, *args):
+    def forward(self, src, trg, teacher_forcing_ratio, *args, **kwargs):
         """
         src - src len x batch_size
         trg - trg sent len x batch_size
