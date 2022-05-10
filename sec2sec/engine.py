@@ -41,7 +41,7 @@ def train(model, iterator, optimizer, criterion, clip, train_history=None, valid
         elif isinstance(batch, Dict):
             output = model(
                 **batch, teacher_forcing_ratio=teacher_forcing_ratio)
-            trg = output['trg']
+            trg = batch['trg']
         else:
             output = model(batch, teacher_forcing_ratio=teacher_forcing_ratio)
             trg = batch[1:]
@@ -105,7 +105,7 @@ def evaluate(model, iterator, criterion):
             elif isinstance(batch, Dict):
                 output = model(
                     **batch, teacher_forcing_ratio=0)
-                trg = output['trg']
+                trg = batch['trg']
             else:
                 output = model(
                     batch, teacher_forcing_ratio=0)
